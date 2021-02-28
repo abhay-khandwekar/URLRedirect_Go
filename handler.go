@@ -1,7 +1,10 @@
 package urlshort
 
 import (
+	"encoding/json"
 	"net/http"
+
+	"gopkg.in/yaml.v2"
 )
 
 // MapHandler will return an http.HandlerFunc (which also
@@ -11,8 +14,14 @@ import (
 // If the path is not provided in the map, then the fallback
 // http.Handler will be called instead.
 func MapHandler(pathsToUrls map[string]string, fallback http.Handler) http.HandlerFunc {
-	//	TODO: Implement this...
-	return nil
+	return func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+		if dest, ok := pathsToUrls[path]; ok {
+			http.Redirect(w, r, dest, http.StatusFound)
+			return
+		}
+		fallback.ServeHTTP(w, r)
+	}
 }
 
 // YAMLHandler will parse the provided YAML and then return
@@ -32,6 +41,80 @@ func MapHandler(pathsToUrls map[string]string, fallback http.Handler) http.Handl
 // See MapHandler to create a similar http.HandlerFunc via
 // a mapping of paths to urls.
 func YAMLHandler(yml []byte, fallback http.Handler) (http.HandlerFunc, error) {
-	// TODO: Implement this...
-	return nil, nil
+	pathUrlsMap, err := parseYaml(yml)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return MapHandler(buildMap(pathUrlsMap), fallback), nil
+}
+
+func parseYaml(yml []byte) ([]pathURL, error) {
+	var pathUrls []pathURL
+	err := yaml.Unmarshal(yml, &pathUrls)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return pathUrls, nil
+}
+
+// JSONHandler will parse the provided JSON and then return
+// an http.HandlerFunc (which also implements http.Handler)
+// that will attempt to map any paths to their corresponding
+// URL. If the path is not provided in the YAML, then the
+// fallback http.Handler will be called instead.
+//
+// JSON is expected to be in the format:
+//
+// [
+//     {
+//        "path":"/google",
+//        "url":"https://google.com/"
+//     },
+//     {
+//        "path":"/github",
+//        "url":"https://github.com/"
+//     }
+//  ]
+//
+// The only errors that can be returned all related to having
+// invalid JSON data.
+func JSONHandler(jsonData []byte, fallback http.Handler) (http.HandlerFunc, error) {
+	pathUrlsMap, err := parseJSON(jsonData)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return MapHandler(buildMap(pathUrlsMap), fallback), nil
+}
+
+func parseJSON(jsonData []byte) ([]pathURL, error) {
+	var pathUrls []pathURL
+
+	err := json.Unmarshal(jsonData, &pathUrls)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return pathUrls, nil
+}
+
+func buildMap(pathUrls []pathURL) map[string]string {
+	pathUrlsMap := make(map[string]string)
+
+	for _, v := range pathUrls {
+		pathUrlsMap[v.Path] = v.URL
+	}
+
+	return pathUrlsMap
+}
+
+type pathURL struct {
+	Path string `yaml:"path" json:"path"`
+	URL  string `yaml:"url" json:"url"`
 }
